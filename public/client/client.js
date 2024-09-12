@@ -75,7 +75,10 @@ window.addEventListener('mousemove', (e) => {
 
 // mouse click
 window.addEventListener('mousedown', (e) => {
-  // shooting
+  player.shooting = true
+})
+window.addEventListener('mouseup', (e) => {
+  player.shooting = false
 })
 
 window.requestAnimationFrame(update)

@@ -1,6 +1,9 @@
-import { Ship } from '../shared/world/world.js'
+import { Ship, Bullet } from '../shared/world/world.js'
 import { Vector2 } from '../shared/math/vector2.js'
 
+
+const DEBUG_DRAW_DIRS = false
+const DEBUG_DRAW_BBOX = true
 
 function drawTriangle(ctx, centerX, centerY, width, height, angleInRadians) {
   // Calculate the three vertices of the triangle
@@ -62,6 +65,11 @@ function drawLine(ctx, fromPos, toPos, color) {
   ctx.stroke()
 }
 
+function drawRect(ctx, pos, size, color = 'white') {
+  ctx.strokeStyle = color
+  ctx.strokeRect(pos.x, pos.y, size.x, size.y)
+}
+
 export class Renderer {
   constructor(canvas, world, camera) {
     this.canvas = canvas
@@ -89,11 +97,12 @@ export class Renderer {
     this.renderBackground()
 
     for (let entity of this.world.entities) {
+      // culling
+      if (!this.camera.isVisible(entity)) {
+        continue
+      }
+
       if (entity instanceof Ship) {
-        // culling
-        if (!this.camera.isVisible(entity)) {
-          continue
-        }
 
         // translate from world space to camera space
         const pos = this.camera.worldToScreen(entity.pos)
@@ -104,12 +113,34 @@ export class Renderer {
         drawTriangle(c, pos.x, pos.y, entity.size.x, entity.size.y, entity.angle)
 
         // DEBUG: dir
-        var dir = entity.getDirection().mul(20)
-        var color = entity.thrusting ? 'red' : 'white'
-        drawLine(c, pos, pos.add(dir), color)
+        if (DEBUG_DRAW_DIRS) {
+          var dir = entity.getDirection().mul(20)
+          var color = entity.thrusting ? 'red' : 'white'
+          drawLine(c, pos, pos.add(dir), color)
+        }
+
+        // render HP
+        c.font = "20px Arial";
+        c.fillStyle = "white";
+        c.fillText(entity.hp, pos.x - 10, pos.y - 50)
 
 
       }
+      else if (entity instanceof Bullet) {
+        // translate from world space to camera space
+        const pos = this.camera.worldToScreen(entity.pos)
+
+        drawCircle(this.c, pos, entity.size.x, 'red')
+      }
+
+      // DEBUG: bbox
+      if (DEBUG_DRAW_BBOX) {
+        const bbox = entity.getBBox()
+        const topLeft = this.camera.worldToScreen(bbox.getTopLeft())
+        const bottomRight = this.camera.worldToScreen(bbox.getBottomRight())
+        drawRect(c, topLeft, bottomRight.sub(topLeft), 'green')
+      }
+
     }
   }
 
