@@ -77,7 +77,7 @@ export class Renderer {
     this.camera = camera
 
     this.c = canvas.getContext('2d')
-    window.addEventListener("resize", this.resizeCanvas);
+    window.addEventListener("resize", this.resizeCanvas.bind(this));
     this.resizeCanvas();
   }
 
@@ -85,7 +85,6 @@ export class Renderer {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
     this.camera.size = new Vector2(this.canvas.width, this.canvas.height)
-    console.log("camera size", this.camera.size)
   }
 
   renderBackground() {
@@ -120,7 +119,7 @@ export class Renderer {
         }
 
         // render HP
-        c.font = "20px Arial";
+        c.font = "16px Arial";
         c.fillStyle = "white";
         c.fillText(entity.hp, pos.x - 10, pos.y - 50)
 
@@ -142,6 +141,11 @@ export class Renderer {
       }
 
     }
+
+    // fps
+    this.c.font = "12px Arial";
+    this.c.fillStyle = "white";
+    this.c.fillText("FPS: " + Math.round(1 / this.world.lastDt), 10, 30)
   }
 
   renderDebugLine(fromPos, toPos, color = 'white') {

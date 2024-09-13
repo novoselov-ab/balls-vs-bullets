@@ -10,6 +10,9 @@ export class Vector2 {
   static zero() {
     return new Vector2(0, 0);
   }
+  static fromObject(obj) {
+    return new Vector2(obj.x, obj.y);
+  }
 
   // Add another vector to this one
   add(v) {
@@ -72,6 +75,10 @@ export class Vector2 {
     }
     const dot = clamp(dotProduct / denominator, -1., 1.);
     return Math.acos(dot);
+  }
+
+  rotate90() {
+    return new Vector2(-this.y, this.x);
   }
 
   // Get the signed angle between this vector and another vector
