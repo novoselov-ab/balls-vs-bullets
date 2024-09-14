@@ -5,7 +5,7 @@ import { Vector2 } from '../shared/math/vector2.js'
 const DEBUG_DRAW_DIRS = false
 const DEBUG_DRAW_BBOX = true
 
-function drawTriangle(ctx, centerX, centerY, width, height, angleInRadians) {
+function drawTriangle(ctx, centerX, centerY, width, height, angleInRadians, color = 'blue') {
   // Calculate the three vertices of the triangle
   const halfWidth = width / 2;
   const halfHeight = height / 2;
@@ -42,7 +42,7 @@ function drawTriangle(ctx, centerX, centerY, width, height, angleInRadians) {
   ctx.closePath();
 
   // Optionally fill and stroke
-  ctx.fillStyle = 'blue';
+  ctx.fillStyle = color;
   ctx.fill();
   ctx.strokeStyle = 'black';
   ctx.stroke();
@@ -109,7 +109,8 @@ export class Renderer {
         // console.log("render", pos)
 
         var c = this.c
-        drawTriangle(c, pos.x, pos.y, entity.size.x, entity.size.y, entity.angle)
+        color = entity.isPlayer ? 'orange' : 'blue'
+        drawTriangle(c, pos.x, pos.y, entity.size.x, entity.size.y, entity.angle, color)
 
         // DEBUG: dir
         if (DEBUG_DRAW_DIRS) {

@@ -1,4 +1,4 @@
-import { clamp } from "./common.js";
+import { clamp, clamp01 } from "./common.js";
 
 const EPSILON_NORMAL_SQRT = 1e-15;
 
@@ -92,6 +92,10 @@ export class Vector2 {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     return new Vector2(this.x * cos - this.y * sin, this.x * sin + this.y * cos)
+  }
+
+  lerp(v, t) {
+    return this.add(v.sub(this).mul(clamp01(t)));
   }
 
   // Return a string representation of the vector

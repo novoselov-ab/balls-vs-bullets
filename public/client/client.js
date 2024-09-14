@@ -1,7 +1,7 @@
 import { Vector2 } from './../shared/math/vector2.js'
 import { angleDifference } from '../shared/math/common.js'
 import { Camera } from './camera.js'
-import { World, Ship } from './../shared/world/world.js'
+import { World, Ship, Input } from './../shared/world/world.js'
 import { Renderer } from './renderer.js'
 
 const canvas = document.querySelector('canvas')
@@ -12,11 +12,13 @@ const c = canvas.getContext('2d')
 
 const THRUST_DISTANCE = 100
 
-const camera = new Camera(new Vector2(200, 200))
+const camera = new Camera(new Vector2(400, 400))
 const world = new World()
+camera.pos = world.size.mul(0.5)
 const renderer = new Renderer(canvas, world, camera)
 
 let player = null
+let input = new Input()
 // const player = new Ship(new Vector2(200, 200))
 // const otherShip = new Ship(new Vector2(300, 300))
 // world.addEntity(player)
@@ -46,27 +48,33 @@ function update() {
   const angleDiff = playerDir.signedAngle(dirToMouse)
 
   if (Math.abs(angleDiff) < 0.15) {
-    player.rotatingLeft = false
-    player.rotatingRight = false
+    input.rotatingLeft = false
+    input.rotatingRight = false
   }
   else if (angleDiff < 0) {
-    player.rotatingLeft = true
-    player.rotatingRight = false
+    input.rotatingLeft = true
+    input.rotatingRight = false
   } else {
-    player.rotatingLeft = false
-    player.rotatingRight = true
+    input.rotatingLeft = false
+    input.rotatingRight = true
   }
 
   // DEBUG mouse
   // otherShip.pos = mousePos
 
   const distance = playerPos.distance(mousePos)
-  player.thrusting = distance > THRUST_DISTANCE
+  input.thrusting = distance > THRUST_DISTANCE
+
+  input.updateNumber = world.updateNumber
+  player.inputCurrent = input.clone()
+  socket.emit('client_player', {
+    id: player.id,
+    ...input.getNetworkData()
+  })
 
   world.update(dt)
   renderer.render()
 
-  socket.emit('client_player', player.getNetworkData())
 
   // mouse pos debug line
   // renderer.renderDebugLine(playerPos, mousePos)
@@ -83,30 +91,47 @@ window.addEventListener('mousemove', (e) => {
 
 // mouse click
 window.addEventListener('mousedown', (e) => {
-  if (!player) return
-  player.shooting = true
+  input.shooting = true
 })
 window.addEventListener('mouseup', (e) => {
-  if (!player) return
-  player.shooting = false
+  input.shooting = false
 })
 
 window.requestAnimationFrame(update)
 
 socket.emit('new player')
 
-socket.on('players', (players) => {
+socket.on('server_state', (state) => {
+  const serverTime = state.serverTime
+  const players = state.players
+
+  // if (Math.abs(world.gameTime - serverTime) > 0.5) {
+  //   console.warn("server time mismatch", world.gameTime, serverTime)
+  //   world.gameTime = serverTime
+  // }
+  world.gameTime = serverTime
+
   for (const playerData of players) {
     const existingPlayer = world.entities.find(e => e.id === playerData.id)
     if (existingPlayer) {
-      existingPlayer.pos = Vector2.fromObject(playerData.pos)
-      existingPlayer.angle = playerData.angle
-      existingPlayer.speed = Vector2.fromObject(playerData.speed)
-      existingPlayer.hp = playerData.hp
+      if (existingPlayer.isPlayer) {
+        existingPlayer.pos = Vector2.fromObject(playerData.pos)
+        existingPlayer.angle = playerData.angle
+        existingPlayer.speed = Vector2.fromObject(playerData.speed)
+        existingPlayer.hp = playerData.hp
+        existingPlayer.replayInputAfterUpdateNumber(playerData.lastUpdateNumber)
+      }
+      else {
+        existingPlayer.posBuffer.push([serverTime, Vector2.fromObject(playerData.pos)])
+        existingPlayer.angle = playerData.angle
+        existingPlayer.speed = Vector2.fromObject(playerData.speed)
+        existingPlayer.hp = playerData.hp
+      }
     } else {
-      const newPlayer = new Ship(Vector2.fromObject(playerData.pos), playerData.id)
+      const newPlayer = new Ship(playerData.id, Vector2.fromObject(playerData.pos))
       if (playerData.id === socket.id) {
         player = newPlayer
+        player.isPlayer = true
         console.log("new player is me", player, player.pos.normalized())
       }
       world.addEntity(newPlayer)

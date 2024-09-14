@@ -1,5 +1,6 @@
-import { World, Ship } from './public/shared/world/world.js'
+import { World, Ship, NpcPlayer } from './public/shared/world/world.js'
 import { Vector2 } from './public/shared/math/vector2.js'
+import { SERVER_TICK_MS } from './public/shared/world/constants.js'
 
 import express from 'express'
 const app = express()
@@ -30,47 +31,67 @@ server.listen(port, () => {
 })
 
 const world = new World()
+world.isServer = true
+
+var npcs = []
+
+function addNpc() {
+  const npc1 = new Ship("npc1", new Vector2(100, 100))
+  const npcPlayer1 = new NpcPlayer(npc1)
+  npcs.push(npcPlayer1)
+  world.addEntity(npc1)
+}
 
 io.on('connection', (socket) => {
   console.log('a user connected')
 
-  const player = new Ship(new Vector2(Math.random() * 100, 200), socket.id)
+  const player = new Ship(socket.id, new Vector2(Math.random() * 100, 200))
   world.addEntity(player)
 
   socket.on('disconnect', () => {
+    world.removeEntity(player)
     console.log('user disconnected')
+
   })
 
-  socket.on('client_player', (playerData) => {
-    const player = world.entities.find(e => e.id === playerData.id)
-    if (player) {
-      player.shooting = playerData.shooting
-      player.thrusting = playerData.thrusting
-      player.rotatingLeft = playerData.rotatingLeft
-      player.rotatingRight = playerData.rotatingRight
+  socket.on('client_player', (input) => {
+    const ship = world.entities.find(e => e.id === input.id)
+    if (ship) {
+      ship.inputCurrent.shooting = input.shooting
+      ship.inputCurrent.thrusting = input.thrusting
+      ship.inputCurrent.rotatingLeft = input.rotatingLeft
+      ship.inputCurrent.rotatingRight = input.rotatingRight
+      ship.inputCurrent.updateNumber = input.updateNumber
+    } else {
+      console.warn("no ship found", input.id)
     }
   })
 
 })
 
 
-const serverTickMs = 100
 let lastTime = Date.now()
-let gameTime = 0
-
 
 function serverTick() {
   const realDt = (Date.now() - lastTime) * 0.001
   lastTime = Date.now()
-  const dt = serverTickMs / 1000
+  const dt = SERVER_TICK_MS / 1000
   if (Math.abs(realDt - dt) > 0.1) {
     console.warn("dt mismatch", realDt, dt)
   }
   // console.log("server dt", dt)
 
+  for (const npc of npcs) {
+    npc.update(dt)
+  }
+
   world.update(dt)
 
-  io.emit('players', world.entities.filter(e => e instanceof Ship).map(e => e.getNetworkData()))
+  var server_data = {
+    "serverTime": world.gameTime,
+    "players": world.entities.filter(e => e instanceof Ship).map(e => e.getNetworkData())
+  }
+  io.emit('server_state', server_data)
 }
 
-setInterval(serverTick, serverTickMs) // server ticker
+setInterval(serverTick, SERVER_TICK_MS) // server ticker
