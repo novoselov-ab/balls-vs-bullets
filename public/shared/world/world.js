@@ -2,7 +2,7 @@ import { Vector2 } from './../math/vector2.js'
 import { Rectangle } from './../math/rectangle.js'
 import { Segment } from '../math/segment.js'
 import { clamp01 } from './../math/common.js'
-import { WORLD_DRAG, WORLD_SPEED_DRAG, SHIP_THRUST, SHIP_ROTATE_SPEED, BULLET_SPEED, BULLET_LIFETIME, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, SERVER_TICK_MS } from './constants.js'
+import { WORLD_DRAG, WORLD_SPEED_DRAG, SHIP_THRUST, SHIP_ROTATE_SPEED, BULLET_SPEED, BULLET_LIFETIME, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, GAME_DT_MS } from './constants.js'
 
 
 
@@ -11,8 +11,7 @@ export class World {
     this.size = new Vector2(1000, 1000)
     this.entities = []
     this.gameTime = 0
-    this.updateNumber = 0
-    this.lastDt = 0
+    this.tickNumber = 0
     this.averageDt = 0
     this.isServer = false
   }
@@ -26,16 +25,17 @@ export class World {
     this.entities = this.entities.filter(e => e !== entity)
   }
 
-  spawnBullet(pos, direction, owner) {
+  trySpawnBullet(pos, direction, owner) {
     const bulletId = `${owner.id}-${owner.shotBulletCount}`
     // find if that bullet already exists
     const entity = this.entities.find(entity => entity instanceof Bullet && entity.id === bulletId)
     if (entity) {
-      return
+      return false
     }
     const bullet = new Bullet(bulletId, pos, direction, owner)
     this.addEntity(bullet)
     owner.shotBulletCount++
+    return true
   }
 
   render() {
@@ -45,9 +45,6 @@ export class World {
   }
 
   update(dt) {
-    this.lastDt = dt
-    this.gameTime += dt
-    this.updateNumber++
     this.entities.forEach(entity => {
       entity.update(dt)
     })
@@ -83,6 +80,10 @@ export class World {
 
     // remove dead
     this.entities = this.entities.filter(entity => entity.alive)
+
+    // advance game time
+    this.gameTime += dt
+    this.tickNumber++
   }
 }
 
@@ -124,7 +125,7 @@ export class Input {
     this.thrusting = false
     this.rotatingLeft = false
     this.rotatingRight = false
-    this.updateNumber = 0
+    this.tickNumber = 0
     this.dt = 0
   }
 
@@ -134,8 +135,25 @@ export class Input {
       thrusting: this.thrusting,
       rotatingLeft: this.rotatingLeft,
       rotatingRight: this.rotatingRight,
-      updateNumber: this.updateNumber,
+      tickNumber: this.tickNumber,
       dt: this.dt
+    }
+  }
+
+  setRotateToTarget(ship, target) {
+    const dirToTarget = target.sub(ship.pos).normalized()
+    const angleToTarget = ship.getDirection().signedAngle(dirToTarget)
+
+    if (Math.abs(angleToTarget) < 0.15) {
+      this.rotatingLeft = false
+      this.rotatingRight = false
+    }
+    else if (angleToTarget < 0) {
+      this.rotatingLeft = true
+      this.rotatingRight = false
+    } else {
+      this.rotatingLeft = false
+      this.rotatingRight = true
     }
   }
 
@@ -145,7 +163,7 @@ export class Input {
     input.thrusting = this.thrusting
     input.rotatingLeft = this.rotatingLeft
     input.rotatingRight = this.rotatingRight
-    input.updateNumber = this.updateNumber
+    input.tickNumber = this.tickNumber
     input.dt = this.dt
     return input
   }
@@ -167,6 +185,8 @@ export class Ship extends Entity {
 
     this.inputCurrent = new Input()
     this.inputBuffer = []
+
+    // true for a current player on a client
     this.isPlayer = false
 
   }
@@ -181,13 +201,32 @@ export class Ship extends Entity {
       shootingCooldown: this.shootingCooldown,
       hpLossCooldown: this.hpLossCooldown,
       shotBulletCount: this.shotBulletCount,
-      lastUpdateNumber: this.inputCurrent.updateNumber
+      lastInputTickNumber: this.inputCurrent.tickNumber
     }
   }
 
-  spawnBullet() {
+  syncToNetworkData(serverTime, data) {
+    if (this.isPlayer) {
+      this.pos = Vector2.fromObject(data.pos)
+      this.angle = data.angle
+      this.speed = Vector2.fromObject(data.speed)
+      this.hp = data.hp
+      this.shootingCooldown = data.shootingCooldown
+      this.hpLossCooldown = data.hpLossCooldown
+      this.shotBulletCount = data.shotBulletCount
+      this.replayInputAfterTickNumber(data.lastInputTickNumber)
+    }
+    else {
+      this.posBuffer.push([serverTime, Vector2.fromObject(data.pos)])
+      this.angle = data.angle
+      this.speed = Vector2.fromObject(data.speed)
+      this.hp = data.hp
+    }
+  }
+
+  trySpawnBullet() {
     const dir = this.getDirection()
-    this.world.spawnBullet(this.pos.add(dir.mul(7.0)), dir, this)
+    return this.world.trySpawnBullet(this.pos.add(dir.mul(7.0)), dir, this)
   }
 
   onCollision(other) {
@@ -216,12 +255,11 @@ export class Ship extends Entity {
       this.inputCurrent.dt = dt
       this.applyInput(this.inputCurrent)
       if (this.isPlayer) {
-        this.inputCurrent.updateNumber = this.world.updateNumber
-        this.inputBuffer.push(this.inputCurrent.clone())
+        this.inputBuffer.push(this.inputCurrent)
       }
     } else {
       // interpolate
-      const serverTime = this.world.gameTime - SERVER_TICK_MS / 1000
+      const serverTime = this.world.gameTime - GAME_DT_MS / 1000
 
       // Find the two authoritative positions surrounding the rendering timestamp.
       var buffer = this.posBuffer;
@@ -246,11 +284,11 @@ export class Ship extends Entity {
     }
   }
 
-  replayInputAfterUpdateNumber(updateNumber) {
-    // drop input buffer less or equal to updateNumber
-    this.inputBuffer = this.inputBuffer.filter(input => input.updateNumber > updateNumber)
-
+  replayInputAfterTickNumber(tickNumber) {
+    // drop old input
+    this.inputBuffer = this.inputBuffer.filter(input => input.tickNumber > tickNumber)
     // replay input
+
     for (const input of this.inputBuffer) {
       this.applyInput(input)
     }
@@ -276,8 +314,9 @@ export class Ship extends Entity {
 
       if (input.shooting) {
         if (this.shootingCooldown <= 0) {
-          this.spawnBullet()
-          this.shootingCooldown = SHIP_SHOOTING_COOLDOWN
+          if (this.trySpawnBullet()) {
+            this.shootingCooldown = SHIP_SHOOTING_COOLDOWN
+          }
         }
       }
     }
@@ -340,20 +379,7 @@ export class NpcPlayer {
       this.waypointCooldown = 3.0
     }
 
-    const dirToWaypoint = this.waypoint.sub(this.ship.pos).normalized()
-    const angleDiff = this.ship.getDirection().signedAngle(dirToWaypoint)
-
-    if (Math.abs(angleDiff) < 0.15) {
-      this.ship.inputCurrent.rotatingLeft = false
-      this.ship.inputCurrent.rotatingRight = false
-    }
-    else if (angleDiff < 0) {
-      this.ship.inputCurrent.rotatingLeft = true
-      this.ship.inputCurrent.rotatingRight = false
-    } else {
-      this.ship.inputCurrent.rotatingLeft = false
-      this.ship.inputCurrent.rotatingRight = true
-    }
+    this.ship.inputCurrent.setRotateToTarget(this.ship, this.waypoint)
 
     const distance = this.ship.pos.distance(this.waypoint)
     this.ship.inputCurrent.thrusting = distance > 100

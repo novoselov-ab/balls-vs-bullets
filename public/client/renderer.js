@@ -75,6 +75,8 @@ export class Renderer {
     this.canvas = canvas
     this.world = world
     this.camera = camera
+    this.lastRenderTime = Date.now()
+    this.debugInfo = {}
 
     this.c = canvas.getContext('2d')
     window.addEventListener("resize", this.resizeCanvas.bind(this));
@@ -92,7 +94,14 @@ export class Renderer {
     this.c.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
+  setDebugInfo(key, value) {
+    this.debugInfo[key] = value
+  }
+
   render() {
+    const dt = (Date.now() - this.lastRenderTime) / 1000
+    this.lastRenderTime = Date.now()
+
     this.renderBackground()
 
     for (let entity of this.world.entities) {
@@ -146,7 +155,12 @@ export class Renderer {
     // fps
     this.c.font = "12px Arial";
     this.c.fillStyle = "white";
-    this.c.fillText("FPS: " + Math.round(1 / this.world.lastDt), 10, 30)
+    this.c.fillText("Render FPS: " + Math.round(1 / dt), 10, 30)
+
+    // debug info
+    for (const [key, value] of Object.entries(this.debugInfo)) {
+      this.c.fillText(`${key}: ${value}`, 10, 50 + 20 * Object.keys(this.debugInfo).indexOf(key))
+    }
   }
 
   renderDebugLine(fromPos, toPos, color = 'white') {

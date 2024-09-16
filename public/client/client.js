@@ -1,140 +1,156 @@
 import { Vector2 } from './../shared/math/vector2.js'
-import { angleDifference } from '../shared/math/common.js'
 import { Camera } from './camera.js'
 import { World, Ship, Input } from './../shared/world/world.js'
+import { THRUST_DISTANCE, GAME_DT_MS } from './../shared/world/constants.js'
 import { Renderer } from './renderer.js'
 
-const canvas = document.querySelector('canvas')
 
-const socket = io()
+class Client {
+  constructor(window) {
+    this.window = window
+    this.canvas = document.querySelector('canvas')
+    this.socket = io()
+    this.c = this.canvas.getContext('2d')
+    this.camera = new Camera(new Vector2(400, 400))
+    this.world = new World()
+    this.camera.pos = this.world.size.mul(0.5)
+    this.renderer = new Renderer(this.canvas, this.world, this.camera)
+    this.player = null
+    this.lastTime = Date.now()
+    this.mousePos = Vector2.zero()
+    this.mouseDown = false
+    this.pingMS = 0
+    this.gameStarted = false
 
-const c = canvas.getContext('2d')
+    this.socket.emit('new player')
 
-const THRUST_DISTANCE = 100
+    // mouse 
+    this.window.addEventListener('mousemove', (e) => {
+      const rect = this.canvas.getBoundingClientRect()
+      this.mousePos = this.camera.screenToWorld(new Vector2(e.clientX - rect.left, e.clientY - rect.top))
+    })
 
-const camera = new Camera(new Vector2(400, 400))
-const world = new World()
-camera.pos = world.size.mul(0.5)
-const renderer = new Renderer(canvas, world, camera)
+    // mouse click
+    this.window.addEventListener('mousedown', (e) => {
+      this.mouseDown = true
+    })
+    this.window.addEventListener('mouseup', (e) => {
+      this.mouseDown = false
+    })
 
-let player = null
-let input = new Input()
-// const player = new Ship(new Vector2(200, 200))
-// const otherShip = new Ship(new Vector2(300, 300))
-// world.addEntity(player)
-// world.addEntity(otherShip)
-// world.addEntity(new Ship(new Vector2(20, 20)))
-// world.addEntity(new Ship(new Vector2(150, 50)))
-renderer.render()
+    // keep current ping
+    setInterval(() => {
+      const start = Date.now();
 
+      this.socket.emit("ping", () => {
+        const duration = Date.now() - start;
+        this.pingMS = duration;
 
-var lastTime = Date.now()
-
-var mousePos = Vector2.zero()
-
-function update() {
-  window.requestAnimationFrame(update)
-
-  const dt = (Date.now() - lastTime) * 0.001
-  lastTime = Date.now()
-
-  if (!player) return
-
-  // mouse input
-  const playerPos = player.pos
-
-  const dirToMouse = mousePos.sub(playerPos).normalized()
-  const playerDir = player.getDirection()
-  const angleDiff = playerDir.signedAngle(dirToMouse)
-
-  if (Math.abs(angleDiff) < 0.15) {
-    input.rotatingLeft = false
-    input.rotatingRight = false
-  }
-  else if (angleDiff < 0) {
-    input.rotatingLeft = true
-    input.rotatingRight = false
-  } else {
-    input.rotatingLeft = false
-    input.rotatingRight = true
+        // start the game when the first ping is received
+        if (!this.gameStarted) this.startGame()
+      });
+    }, 200);
   }
 
-  // DEBUG mouse
-  // otherShip.pos = mousePos
+  startGame() {
+    if (this.gameStarted) return
 
-  const distance = playerPos.distance(mousePos)
-  input.thrusting = distance > THRUST_DISTANCE
+    // listen for server state
+    this.socket.on('sendServerState', this.onServerState.bind(this))
 
-  input.updateNumber = world.updateNumber
-  player.inputCurrent = input.clone()
-  socket.emit('client_player', {
-    id: player.id,
-    ...input.getNetworkData()
-  })
+    // notify server of new player
+    this.socket.emit('new player')
 
-  world.update(dt)
-  renderer.render()
+    // start the update loop
+    setTimeout(() => {
+      this.window.requestAnimationFrame(this.update.bind(this))
+    }, GAME_DT_MS);
 
+    this.gameStarted = true
+  }
 
-  // mouse pos debug line
-  // renderer.renderDebugLine(playerPos, mousePos)
+  buildPlayerInput() {
+    const input = new Input()
 
+    // rotate towards mouse
+    input.setRotateToTarget(this.player, this.mousePos)
+
+    // thrusting towards mouse
+    const distance = this.player.pos.distance(this.mousePos)
+    input.thrusting = distance > THRUST_DISTANCE
+
+    // shooting
+    input.shooting = this.mouseDown
+
+    // remember tick number
+    input.tickNumber = this.world.tickNumber
+
+    return input
+  }
+
+  update() {
+    setTimeout(() => {
+      this.window.requestAnimationFrame(this.update.bind(this))
+    }, GAME_DT_MS);
+
+    const dt = (Date.now() - this.lastTime) * 0.001
+
+    if (dt < GAME_DT_MS / 1000) {
+      console.warn("dt too small, skipping frame", dt)
+      return
+    }
+
+    this.lastTime = Date.now()
+
+    if (!this.player) return
+
+    // Build and send input
+    this.player.inputCurrent = this.buildPlayerInput()
+    this.socket.emit('sendPlayerInput', {
+      id: this.player.id,
+      ...this.player.inputCurrent.getNetworkData()
+    })
+
+    // Update world
+    this.world.update(dt)
+
+    // Render
+    this.renderer.setDebugInfo("ping", this.pingMS)
+    this.renderer.render()
+
+    // mouse pos debug line
+    // renderer.renderDebugLine(playerPos, mousePos)
+  }
+
+  onServerState(state) {
+    const serverTime = state.gameTime
+    const ships = state.ships
+
+    if (Math.abs(this.world.gameTime - serverTime) > GAME_DT_MS * 10 / 1000) {
+      const clientTimeBefore = this.world.gameTime
+      this.world.gameTime = serverTime + this.pingMS / 2000
+      console.log("server <-> client time syncing:", clientTimeBefore, "->", this.world.gameTime, "ping:", this.pingMS, "ms", "serverTime:", serverTime)
+    }
+    this.world.gameTime = serverTime
+
+    for (const shipData of ships) {
+      const ship = this.world.entities.find(e => e.id === shipData.id)
+      if (ship) {
+        ship.syncToNetworkData(serverTime, shipData)
+      } else {
+        const ship = new Ship(shipData.id, Vector2.fromObject(shipData.pos))
+        if (shipData.id === this.socket.id) {
+          this.player = ship
+          this.player.isPlayer = true
+        }
+        this.world.addEntity(ship)
+      }
+    }
+
+    // remove disconnected players
+    this.world.entities = this.world.entities.filter(e => !(e instanceof Ship && !ships.find(p => p.id === e.id)))
+
+  }
 }
 
-// mouse 
-window.addEventListener('mousemove', (e) => {
-  const rect = canvas.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  mousePos = camera.screenToWorld(new Vector2(x, y))
-})
-
-// mouse click
-window.addEventListener('mousedown', (e) => {
-  input.shooting = true
-})
-window.addEventListener('mouseup', (e) => {
-  input.shooting = false
-})
-
-window.requestAnimationFrame(update)
-
-socket.emit('new player')
-
-socket.on('server_state', (state) => {
-  const serverTime = state.serverTime
-  const players = state.players
-
-  // if (Math.abs(world.gameTime - serverTime) > 0.5) {
-  //   console.warn("server time mismatch", world.gameTime, serverTime)
-  //   world.gameTime = serverTime
-  // }
-  world.gameTime = serverTime
-
-  for (const playerData of players) {
-    const existingPlayer = world.entities.find(e => e.id === playerData.id)
-    if (existingPlayer) {
-      if (existingPlayer.isPlayer) {
-        existingPlayer.pos = Vector2.fromObject(playerData.pos)
-        existingPlayer.angle = playerData.angle
-        existingPlayer.speed = Vector2.fromObject(playerData.speed)
-        existingPlayer.hp = playerData.hp
-        existingPlayer.replayInputAfterUpdateNumber(playerData.lastUpdateNumber)
-      }
-      else {
-        existingPlayer.posBuffer.push([serverTime, Vector2.fromObject(playerData.pos)])
-        existingPlayer.angle = playerData.angle
-        existingPlayer.speed = Vector2.fromObject(playerData.speed)
-        existingPlayer.hp = playerData.hp
-      }
-    } else {
-      const newPlayer = new Ship(playerData.id, Vector2.fromObject(playerData.pos))
-      if (playerData.id === socket.id) {
-        player = newPlayer
-        player.isPlayer = true
-        console.log("new player is me", player, player.pos.normalized())
-      }
-      world.addEntity(newPlayer)
-    }
-  }
-})
+const client = new Client(window) // Initialize the client
