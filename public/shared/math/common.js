@@ -13,9 +13,14 @@ export function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+export function repeat(value, max) {
+  return clamp(value - Math.floor(value / max) * max, 0, max);
+}
+
 export function lerpAngle(a, b, t) {
-  const delta = (b - a + Math.PI) % (2 * Math.PI) - Math.PI;
-  return a + delta * t;
+  var delta = repeat(b - a, Math.PI * 2);
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  return a + delta * clamp01(t);
 }
 
 export function toRadians(degrees) {
