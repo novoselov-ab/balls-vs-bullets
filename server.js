@@ -1,4 +1,4 @@
-import { World, Ship, NpcPlayer } from './public/shared/world/world.js'
+import { World, Ship, NpcPlayer, Input } from './public/shared/world/world.js'
 import { Vector2 } from './public/shared/math/vector2.js'
 import { GAME_DT_MS } from './public/shared/world/constants.js'
 
@@ -30,72 +30,86 @@ server.listen(port, () => {
   console.log(`Example app listening on port ${port}`)
 })
 
-const world = new World()
-world.isServer = true
 
-var npcs = []
+class GameServer {
+  constructor() {
+    this.world = new World(true)
 
-function addNpc() {
-  const npc1 = new Ship("npc1", new Vector2(100, 100))
-  const npcPlayer1 = new NpcPlayer(npc1)
-  npcs.push(npcPlayer1)
-  world.addEntity(npc1)
-}
+    this.npcs = []
+    this.lastTickTime = Date.now()
 
-io.on('connection', (socket) => {
-  console.log('a user connected')
+    io.on('connection', (socket) => {
+      console.log('a user connected')
 
-  const player = new Ship(socket.id, new Vector2(Math.random() * 100, 200))
-  world.addEntity(player)
+      const player = new Ship(socket.id, new Vector2(Math.random() * 100, 200))
+      this.world.addEntity(player)
 
-  socket.on('disconnect', () => {
-    world.removeEntity(player)
-    console.log('user disconnected')
+      socket.on('disconnect', () => {
+        this.world.removeEntity(player)
+        console.log('user disconnected')
 
-  })
+      })
 
-  socket.on("ping", (callback) => {
-    callback();
-  });
+      socket.on("ping", (callback) => {
+        callback();
+      });
 
-  socket.on('sendPlayerInput', (input) => {
-    const ship = world.entities.find(e => e.id === input.id)
-    if (ship) {
-      ship.inputCurrent.shooting = input.shooting
-      ship.inputCurrent.thrusting = input.thrusting
-      ship.inputCurrent.rotatingLeft = input.rotatingLeft
-      ship.inputCurrent.rotatingRight = input.rotatingRight
-      ship.inputCurrent.tickNumber = input.tickNumber
-    } else {
-      console.warn("no ship found", input.id)
+      socket.on('sendPlayerInput', (input) => {
+        const ship = this.world.entities.find(e => e.id === input.id)
+        if (ship) {
+          var newInput = new Input()
+          newInput.syncToNetworkData(input)
+          ship.newInputQueue.push(newInput)
+        } else {
+          console.warn("no ship found", input.id)
+        }
+      })
+
+    })
+
+    // Add NPCs
+    this.addNpc()
+
+    // start the game loop
+    setInterval(this.serverTick.bind(this), GAME_DT_MS)
+  }
+
+  addNpc() {
+    const npc1 = new Ship("npc1", new Vector2(100, 100))
+    const npcPlayer1 = new NpcPlayer(npc1)
+    this.npcs.push(npcPlayer1)
+    this.world.addEntity(npc1)
+  }
+
+  serverTick() {
+    const realDt = (Date.now() - this.lastTickTime) * 0.001
+    this.lastTickTime = Date.now()
+    const dt = GAME_DT_MS / 1000
+    if (Math.abs(realDt - dt) > 0.1) {
+      console.warn("dt mismatch", realDt, dt)
     }
-  })
 
-})
+    // Update NPCs
+    for (const npc of this.npcs) {
+      npc.update(dt)
+    }
 
+    // Update world
+    this.world.update(dt)
 
-let lastTime = Date.now()
-
-function serverTick() {
-  const realDt = (Date.now() - lastTime) * 0.001
-  lastTime = Date.now()
-  const dt = GAME_DT_MS / 1000
-  if (Math.abs(realDt - dt) > 0.1) {
-    console.warn("dt mismatch", realDt, dt)
+    // Send server state to all clients
+    var state = {
+      "gameTime": this.world.gameTime,
+      "ships": this.world.entities.filter(e => e instanceof Ship).map(e => e.getNetworkData())
+    }
+    io.emit('sendServerState', state)
   }
-  // console.log("server dt", dt)
-
-  for (const npc of npcs) {
-    npc.update(dt)
-  }
-
-  world.update(dt)
-
-  var state = {
-    "gameTime": world.gameTime,
-    "ships": world.entities.filter(e => e instanceof Ship).map(e => e.getNetworkData())
-  }
-  io.emit('sendServerState', state)
 }
 
-setInterval(serverTick, GAME_DT_MS) // server ticker
+
+const gameServer = new GameServer() // Initialize the game server
+
+
+
+
+

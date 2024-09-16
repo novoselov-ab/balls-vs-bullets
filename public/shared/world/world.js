@@ -1,19 +1,19 @@
 import { Vector2 } from './../math/vector2.js'
 import { Rectangle } from './../math/rectangle.js'
 import { Segment } from '../math/segment.js'
-import { clamp01 } from './../math/common.js'
-import { WORLD_DRAG, WORLD_SPEED_DRAG, SHIP_THRUST, SHIP_ROTATE_SPEED, BULLET_SPEED, BULLET_LIFETIME, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, GAME_DT_MS } from './constants.js'
+import { clamp, clamp01, lerpAngle } from './../math/common.js'
+import { WORLD_DRAG, WORLD_SPEED_DRAG, SHIP_THRUST, SHIP_ROTATE_SPEED, BULLET_SPEED, BULLET_LIFETIME, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, RENDER_DELAY_MS, MAX_THRUST_INPUT_AT_DISTANCE, MAX_ROTATION_INPUT_AT_ANGLE } from './constants.js'
 
 
 
 export class World {
-  constructor() {
+  constructor(isServer = false) {
     this.size = new Vector2(1000, 1000)
     this.entities = []
     this.gameTime = 0
     this.tickNumber = 0
     this.averageDt = 0
-    this.isServer = false
+    this.isServer = isServer
   }
 
   addEntity(entity) {
@@ -38,9 +38,9 @@ export class World {
     return true
   }
 
-  render() {
+  render(dt) {
     this.entities.forEach(entity => {
-      entity.render()
+      entity.render(dt)
     })
   }
 
@@ -85,15 +85,16 @@ export class World {
     this.gameTime += dt
     this.tickNumber++
   }
+
 }
 
 export class Entity {
   constructor(id, pos) {
     this.id = id
     this.pos = pos
-    this.posBuffer = []
+    this.renderPos = pos
     this.angle = 0
-    this.angleBuffer = []
+    this.renderAngle = 0
     this.size = new Vector2(1, 1)
     this.alive = true
   }
@@ -117,14 +118,20 @@ export class Entity {
   getDirection() {
     return new Vector2(0, -1).rotate(this.angle)
   }
+
+  render(dt) {
+    const t = clamp01(dt / (RENDER_DELAY_MS * 0.001))
+    // interpolate position and angle for rendering:
+    this.renderPos = this.renderPos.add(this.pos.sub(this.renderPos).mul(t))
+    this.renderAngle = lerpAngle(this.renderAngle, this.angle, t)
+  }
 }
 
 export class Input {
   constructor() {
     this.shooting = false
-    this.thrusting = false
-    this.rotatingLeft = false
-    this.rotatingRight = false
+    this.thrust = 0.0
+    this.rotation = 0.0
     this.tickNumber = 0
     this.dt = 0
   }
@@ -132,37 +139,36 @@ export class Input {
   getNetworkData() {
     return {
       shooting: this.shooting,
-      thrusting: this.thrusting,
-      rotatingLeft: this.rotatingLeft,
-      rotatingRight: this.rotatingRight,
+      thrust: this.thrust,
+      rotation: this.rotation,
       tickNumber: this.tickNumber,
       dt: this.dt
     }
   }
 
+  syncToNetworkData(data) {
+    this.shooting = data.shooting
+    this.thrust = data.thrust
+    this.rotation = data.rotation
+    this.tickNumber = data.tickNumber
+    this.dt = data.dt
+  }
+
+  setThrustToDistance(distance) {
+    this.thrust = clamp01(distance / MAX_THRUST_INPUT_AT_DISTANCE)
+  }
+
   setRotateToTarget(ship, target) {
     const dirToTarget = target.sub(ship.pos).normalized()
     const angleToTarget = ship.getDirection().signedAngle(dirToTarget)
-
-    if (Math.abs(angleToTarget) < 0.15) {
-      this.rotatingLeft = false
-      this.rotatingRight = false
-    }
-    else if (angleToTarget < 0) {
-      this.rotatingLeft = true
-      this.rotatingRight = false
-    } else {
-      this.rotatingLeft = false
-      this.rotatingRight = true
-    }
+    this.rotation = clamp(angleToTarget / MAX_ROTATION_INPUT_AT_ANGLE, -1, 1)
   }
 
   clone() {
     const input = new Input()
     input.shooting = this.shooting
-    input.thrusting = this.thrusting
-    input.rotatingLeft = this.rotatingLeft
-    input.rotatingRight = this.rotatingRight
+    input.thrust = this.thrust
+    this.rotation = this.rotation
     input.tickNumber = this.tickNumber
     input.dt = this.dt
     return input
@@ -175,16 +181,14 @@ export class Ship extends Entity {
     this.size = new Vector2(20, 40)
     this.speed = new Vector2(0, 0)
 
-    this.rotationSpeed = SHIP_ROTATE_SPEED
-    this.thrust = SHIP_THRUST
-
     this.shootingCooldown = 0
     this.hp = 100
     this.hpLossCooldown = 0
     this.shotBulletCount = 0
 
-    this.inputCurrent = new Input()
+    this.newInputQueue = []
     this.inputBuffer = []
+    this.lastInputTickNumber = 0
 
     // true for a current player on a client
     this.isPlayer = false
@@ -201,26 +205,20 @@ export class Ship extends Entity {
       shootingCooldown: this.shootingCooldown,
       hpLossCooldown: this.hpLossCooldown,
       shotBulletCount: this.shotBulletCount,
-      lastInputTickNumber: this.inputCurrent.tickNumber
+      lastInputTickNumber: this.lastInputTickNumber
     }
   }
 
   syncToNetworkData(serverTime, data) {
+    this.pos = Vector2.fromObject(data.pos)
+    this.angle = data.angle
+    this.speed = Vector2.fromObject(data.speed)
+    this.hp = data.hp
+    this.shootingCooldown = data.shootingCooldown
+    this.hpLossCooldown = data.hpLossCooldown
+    this.shotBulletCount = data.shotBulletCount
     if (this.isPlayer) {
-      this.pos = Vector2.fromObject(data.pos)
-      this.angle = data.angle
-      this.speed = Vector2.fromObject(data.speed)
-      this.hp = data.hp
-      this.shootingCooldown = data.shootingCooldown
-      this.hpLossCooldown = data.hpLossCooldown
-      this.shotBulletCount = data.shotBulletCount
       this.replayInputAfterTickNumber(data.lastInputTickNumber)
-    }
-    else {
-      this.posBuffer.push([serverTime, Vector2.fromObject(data.pos)])
-      this.angle = data.angle
-      this.speed = Vector2.fromObject(data.speed)
-      this.hp = data.hp
     }
   }
 
@@ -252,36 +250,45 @@ export class Ship extends Entity {
 
   update(dt) {
     if (this.world.isServer || this.isPlayer) {
-      this.inputCurrent.dt = dt
-      this.applyInput(this.inputCurrent)
+      var input = this.newInputQueue.shift()
+      if (!input) {
+        return
+      }
+      if (this.newInputQueue.length > 5) {
+        console.log("input queue too long, dropping", this.newInputQueue.length)
+        this.newInputQueue.shift()
+      }
+      input.dt = dt
+      this.applyInput(input)
       if (this.isPlayer) {
-        this.inputBuffer.push(this.inputCurrent)
-      }
-    } else {
-      // interpolate
-      const serverTime = this.world.gameTime - GAME_DT_MS / 1000
-
-      // Find the two authoritative positions surrounding the rendering timestamp.
-      var buffer = this.posBuffer;
-
-      // Drop older positions.
-      while (buffer.length > 2 && buffer[1][0] <= serverTime) {
-        buffer.shift();
-      }
-
-      // Interpolate between the two surrounding authoritative positions.
-      if (buffer.length >= 2 && buffer[0][0] <= serverTime && serverTime <= buffer[1][0]) {
-        var x0 = buffer[0][1];
-        var x1 = buffer[1][1];
-        var t0 = buffer[0][0];
-        var t1 = buffer[1][0];
-
-        const t = (serverTime - t0) / (t1 - t0);
-        this.pos = x0.lerp(x1, t);
-      } else if (buffer.length > 0) {
-        this.pos = buffer[buffer.length - 1][1];
+        this.inputBuffer.push(input)
       }
     }
+    // } else {
+    //   // interpolate
+    //   const serverTime = this.world.gameTime - GAME_DT_MS / 1000
+
+    //   // Find the two authoritative positions surrounding the rendering timestamp.
+    //   var buffer = this.posBuffer;
+
+    //   // Drop older positions.
+    //   while (buffer.length > 2 && buffer[1][0] <= serverTime) {
+    //     buffer.shift();
+    //   }
+
+    //   // Interpolate between the two surrounding authoritative positions.
+    //   if (buffer.length >= 2 && buffer[0][0] <= serverTime && serverTime <= buffer[1][0]) {
+    //     var x0 = buffer[0][1];
+    //     var x1 = buffer[1][1];
+    //     var t0 = buffer[0][0];
+    //     var t1 = buffer[1][0];
+
+    //     const t = (serverTime - t0) / (t1 - t0);
+    //     this.pos = x0.lerp(x1, t);
+    //   } else if (buffer.length > 0) {
+    //     this.pos = buffer[buffer.length - 1][1];
+    //   }
+    // }
   }
 
   replayInputAfterTickNumber(tickNumber) {
@@ -289,9 +296,18 @@ export class Ship extends Entity {
     this.inputBuffer = this.inputBuffer.filter(input => input.tickNumber > tickNumber)
     // replay input
 
+    const prevPos = this.pos
+
+    var i = 0
     for (const input of this.inputBuffer) {
+      i++
       this.applyInput(input)
     }
+
+    // if we moved, we need to interpolate
+    const distance = this.pos.distance(prevPos)
+
+    // console.log("replay", i, "inputs", distance)
   }
 
   applyInput(input) {
@@ -300,17 +316,10 @@ export class Ship extends Entity {
     this.hpLossCooldown = Math.max(0, this.hpLossCooldown - dt)
 
     if (this.alive) {
-      if (input.rotatingLeft) {
-        this.rotate(-this.rotationSpeed * dt)
-      }
-      if (input.rotatingRight) {
-        this.rotate(this.rotationSpeed * dt)
-      }
+      this.rotate(SHIP_ROTATE_SPEED * input.rotation * dt)
 
-      if (input.thrusting) {
-        const acceleration = new Vector2(0, -this.thrust).rotate(this.angle)
-        this.speed = this.speed.add(acceleration.mul(dt))
-      }
+      const acceleration = new Vector2(0, -input.thrust * SHIP_THRUST).rotate(this.angle)
+      this.speed = this.speed.add(acceleration.mul(dt))
 
       if (input.shooting) {
         if (this.shootingCooldown <= 0) {
@@ -333,6 +342,7 @@ export class Ship extends Entity {
     if (this.pos.y < 0) this.pos.y = 0
     if (this.pos.y > this.world.size.y) this.pos.y = this.world.size.y
 
+    this.lastInputTickNumber = input.tickNumber
   }
 
 }
@@ -379,10 +389,13 @@ export class NpcPlayer {
       this.waypointCooldown = 3.0
     }
 
-    this.ship.inputCurrent.setRotateToTarget(this.ship, this.waypoint)
+    var input = new Input()
+
+    input.setRotateToTarget(this.ship, this.waypoint)
 
     const distance = this.ship.pos.distance(this.waypoint)
-    this.ship.inputCurrent.thrusting = distance > 100
+    input.setThrustToDistance(distance)
 
+    this.ship.newInputQueue.push(input)
   }
 }

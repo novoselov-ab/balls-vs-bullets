@@ -3,7 +3,7 @@ import { Vector2 } from '../shared/math/vector2.js'
 
 
 const DEBUG_DRAW_DIRS = false
-const DEBUG_DRAW_BBOX = true
+const DEBUG_DRAW_BBOX = false
 
 function drawTriangle(ctx, centerX, centerY, width, height, angleInRadians, color = 'blue') {
   // Calculate the three vertices of the triangle
@@ -104,6 +104,8 @@ export class Renderer {
 
     this.renderBackground()
 
+    this.world.render(dt)
+
     for (let entity of this.world.entities) {
       // culling
       if (!this.camera.isVisible(entity)) {
@@ -113,13 +115,13 @@ export class Renderer {
       if (entity instanceof Ship) {
 
         // translate from world space to camera space
-        const pos = this.camera.worldToScreen(entity.pos)
+        const pos = this.camera.worldToScreen(entity.renderPos)
 
         // console.log("render", pos)
 
         var c = this.c
         color = entity.isPlayer ? 'orange' : 'blue'
-        drawTriangle(c, pos.x, pos.y, entity.size.x, entity.size.y, entity.angle, color)
+        drawTriangle(c, pos.x, pos.y, entity.size.x, entity.size.y, entity.renderAngle, color)
 
         // DEBUG: dir
         if (DEBUG_DRAW_DIRS) {
@@ -137,7 +139,7 @@ export class Renderer {
       }
       else if (entity instanceof Bullet) {
         // translate from world space to camera space
-        const pos = this.camera.worldToScreen(entity.pos)
+        const pos = this.camera.worldToScreen(entity.renderPos)
 
         drawCircle(this.c, pos, entity.size.x, 'red')
       }

@@ -1,7 +1,7 @@
 import { Vector2 } from './../shared/math/vector2.js'
 import { Camera } from './camera.js'
 import { World, Ship, Input } from './../shared/world/world.js'
-import { THRUST_DISTANCE, GAME_DT_MS } from './../shared/world/constants.js'
+import { MAX_THRUST_INPUT_AT_DISTANCE, GAME_DT_MS } from './../shared/world/constants.js'
 import { Renderer } from './renderer.js'
 
 
@@ -45,6 +45,7 @@ class Client {
       this.socket.emit("ping", () => {
         const duration = Date.now() - start;
         this.pingMS = duration;
+        this.renderer.setDebugInfo("ping", this.pingMS)
 
         // start the game when the first ping is received
         if (!this.gameStarted) this.startGame()
@@ -62,9 +63,10 @@ class Client {
     this.socket.emit('new player')
 
     // start the update loop
-    setTimeout(() => {
-      this.window.requestAnimationFrame(this.update.bind(this))
-    }, GAME_DT_MS);
+    setTimeout(this.update.bind(this), GAME_DT_MS);
+
+    // start the render loop
+    this.window.requestAnimationFrame(this.render.bind(this))
 
     this.gameStarted = true
   }
@@ -77,7 +79,7 @@ class Client {
 
     // thrusting towards mouse
     const distance = this.player.pos.distance(this.mousePos)
-    input.thrusting = distance > THRUST_DISTANCE
+    input.setThrustToDistance(distance)
 
     // shooting
     input.shooting = this.mouseDown
@@ -88,14 +90,17 @@ class Client {
     return input
   }
 
+  render() {
+    this.window.requestAnimationFrame(this.render.bind(this))
+    this.renderer.render()
+  }
+
   update() {
-    setTimeout(() => {
-      this.window.requestAnimationFrame(this.update.bind(this))
-    }, GAME_DT_MS);
+    setTimeout(this.update.bind(this), GAME_DT_MS);
 
     const dt = (Date.now() - this.lastTime) * 0.001
 
-    if (dt < GAME_DT_MS / 1000) {
+    if (dt < (GAME_DT_MS / 1000) * 0.9) {
       console.warn("dt too small, skipping frame", dt)
       return
     }
@@ -105,18 +110,15 @@ class Client {
     if (!this.player) return
 
     // Build and send input
-    this.player.inputCurrent = this.buildPlayerInput()
+    const newInput = this.buildPlayerInput()
     this.socket.emit('sendPlayerInput', {
       id: this.player.id,
-      ...this.player.inputCurrent.getNetworkData()
+      ...newInput.getNetworkData()
     })
+    this.player.newInputQueue.push(newInput)
 
     // Update world
     this.world.update(dt)
-
-    // Render
-    this.renderer.setDebugInfo("ping", this.pingMS)
-    this.renderer.render()
 
     // mouse pos debug line
     // renderer.renderDebugLine(playerPos, mousePos)
