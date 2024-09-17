@@ -3,6 +3,7 @@ import { Rectangle } from './../math/rectangle.js'
 import { Segment } from '../math/segment.js'
 import { Bullet } from './bullet.js'
 import { Ship } from './ship.js'
+import { Player, NpcPlayer } from './player.js'
 import { Entity } from './entity.js'
 import { clamp, clamp01, lerpAngle } from './../math/common.js'
 import { WORLD_DRAG, WORLD_SPEED_DRAG, SHIP_THRUST, SHIP_ROTATE_SPEED, BULLET_SPEED, BULLET_LIFETIME, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, RENDER_DELAY_MS, MAX_THRUST_INPUT_AT_DISTANCE, MAX_ROTATION_INPUT_AT_ANGLE } from './constants.js'
@@ -13,18 +14,45 @@ export class World {
   #entityById
   #shipById
   #bulletById
+  #playerById
 
   constructor(isServer = false) {
     this.size = new Vector2(1000, 1000)
     this.#entityById = {}
     this.#shipById = {}
     this.#bulletById = {}
+    this.#playerById = {}
     this.gameTime = 0
     this.tickNumber = 0
     this.averageDt = 0
     this.isServer = isServer
   }
 
+  addPlayer(id, name = "", isNpc = false) {
+    if (name === undefined) {
+      name = "noname"
+    }
+    if (id === undefined) {
+      id = `${name}-${Math.random()}`
+    }
+    const player = isNpc ? new NpcPlayer(id) : new Player(id)
+    player.name = name
+
+    this.#playerById[player.id] = player
+
+    return player
+  }
+
+  removePlayer(player) {
+    if (player.ship) {
+      this.removeEntity(player.ship)
+    }
+    delete this.#playerById[player.id]
+  }
+
+  getPlayers() {
+    return Object.values(this.#playerById)
+  }
 
   getEntities() {
     return Object.values(this.#entityById)
@@ -102,6 +130,12 @@ export class World {
 
     // Server-only logic
     if (this.isServer) {
+
+      // npcs, players stats
+      for (const player of this.getPlayers()) {
+        player.update(dt)
+      }
+
       //
       // collision detection
       //

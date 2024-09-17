@@ -135,6 +135,9 @@ export class Renderer {
         c.font = "16px Arial";
         c.fillStyle = "white";
         c.fillText(entity.hp, pos.x - 10, pos.y - 50)
+        if (entity.name) {
+          c.fillText(entity.name, pos.x - 10, pos.y - 30)
+        }
 
 
       }

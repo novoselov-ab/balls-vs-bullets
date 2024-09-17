@@ -1,10 +1,27 @@
-import { Vector2 } from './../math/vector2.js'
+import { Vector2 } from '../math/vector2.js'
 import { Input } from './input.js'
 
+export class Player {
+  constructor(id) {
+    this.id = id
+    this.name = ""
+    this.ship = null
+    this.kills = 0
+    this.deaths = 0
+  }
 
-export class NpcPlayer {
-  constructor(ship) {
+  setShip(ship) {
     this.ship = ship
+  }
+
+  update(dt) {
+    // To be implemented by subclasses
+  }
+}
+
+export class NpcPlayer extends Player {
+  constructor(id) {
+    super(id)
     this.waypoint = new Vector2(0, 0)
     this.waypointCooldown = 0
   }

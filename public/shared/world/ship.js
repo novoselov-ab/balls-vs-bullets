@@ -1,7 +1,7 @@
 import { Entity } from './entity.js'
 import { Bullet } from './bullet.js'
 import { Vector2 } from '../math/vector2.js'
-import { SHIP_ROTATE_SPEED, SHIP_THRUST, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, WORLD_SPEED_DRAG, WORLD_DRAG, BULLET_SPEED } from './constants.js'
+import { SHIP_ROTATE_SPEED, SHIP_THRUST, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, WORLD_SPEED_DRAG, WORLD_DRAG, BULLET_SPEED, SHIP_START_HP } from './constants.js'
 import { clamp01 } from '../math/common.js'
 
 
@@ -12,7 +12,7 @@ export class Ship extends Entity {
     this.speed = new Vector2(0, 0)
 
     this.shootingCooldown = 0
-    this.hp = 100
+    this.hp = SHIP_START_HP
     this.hpLossCooldown = 0
     this.shotBulletCount = 0
 
@@ -74,6 +74,9 @@ export class Ship extends Entity {
     }
     this.hp -= amount
     this.hpLossCooldown = SHIP_HP_LOSS_COOLDOWN
+    if (this.hp <= 0) {
+      this.alive = false
+    }
   }
 
   update(dt) {

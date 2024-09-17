@@ -147,6 +147,7 @@ class Client {
         if (shipData.id === this.socket.id) {
           this.player = ship
           this.player.isPlayer = true
+          this.player.name = "Player"
         }
         this.world.addEntity(ship)
       }
