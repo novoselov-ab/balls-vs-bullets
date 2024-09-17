@@ -1,7 +1,7 @@
 import { Entity } from './entity.js'
 import { Bullet } from './bullet.js'
 import { Vector2 } from '../math/vector2.js'
-import { SHIP_ROTATE_SPEED, SHIP_THRUST, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, WORLD_SPEED_DRAG, WORLD_DRAG } from './constants.js'
+import { SHIP_ROTATE_SPEED, SHIP_THRUST, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, WORLD_SPEED_DRAG, WORLD_DRAG, BULLET_SPEED } from './constants.js'
 import { clamp01 } from '../math/common.js'
 
 
@@ -27,21 +27,18 @@ export class Ship extends Entity {
 
   getNetworkData() {
     return {
-      id: this.id,
-      pos: this.pos,
-      angle: this.angle,
+      ...super.getNetworkData(),
       speed: this.speed,
       hp: this.hp,
       shootingCooldown: this.shootingCooldown,
       hpLossCooldown: this.hpLossCooldown,
       shotBulletCount: this.shotBulletCount,
-      lastInputTickNumber: this.lastInputTickNumber
+      lastInputTickNumber: this.lastInputTickNumber,
     }
   }
 
   syncToNetworkData(serverTime, data) {
-    this.pos = Vector2.fromObject(data.pos)
-    this.angle = data.angle
+    super.syncToNetworkData(data)
     this.speed = Vector2.fromObject(data.speed)
     this.hp = data.hp
     this.shootingCooldown = data.shootingCooldown
@@ -54,12 +51,13 @@ export class Ship extends Entity {
 
   trySpawnBullet() {
     const dir = this.getDirection()
-    return this.world.trySpawnBullet(this.pos.add(dir.mul(7.0)), dir, this)
+    const speed = dir.normalized().mul(BULLET_SPEED)
+    return this.world.trySpawnBullet(this.pos.add(dir.mul(7.0)), speed, this)
   }
 
   onCollision(other) {
     if (other instanceof Bullet) {
-      if (other.owner != this) {
+      if (other.ownerId != this.id) {
         this.damage()
         other.die()
       }

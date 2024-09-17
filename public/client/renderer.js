@@ -107,7 +107,7 @@ export class Renderer {
 
     this.world.render(dt)
 
-    for (let entity of this.world.entities) {
+    for (let entity of this.world.getEntities()) {
       // culling
       if (!this.camera.isVisible(entity)) {
         continue

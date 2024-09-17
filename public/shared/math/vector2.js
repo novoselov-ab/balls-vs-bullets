@@ -11,6 +11,9 @@ export class Vector2 {
     return new Vector2(0, 0);
   }
   static fromObject(obj) {
+    if (obj.x === undefined || obj.y === undefined) {
+      throw new Error("Object must have x and y properties.");
+    }
     return new Vector2(obj.x, obj.y);
   }
 

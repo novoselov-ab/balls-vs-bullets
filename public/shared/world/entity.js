@@ -14,6 +14,19 @@ export class Entity {
     this.alive = true
   }
 
+  getNetworkData() {
+    return {
+      id: this.id,
+      pos: this.pos,
+      angle: this.angle,
+    }
+  }
+
+  syncToNetworkData(data) {
+    this.pos = Vector2.fromObject(data.pos)
+    this.angle = data.angle
+  }
+
   setWorld(world) {
     this.world = world
   }

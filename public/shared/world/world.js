@@ -10,79 +10,126 @@ import { Input } from './input.js'
 
 
 export class World {
+  #entityById
+  #shipById
+  #bulletById
+
   constructor(isServer = false) {
     this.size = new Vector2(1000, 1000)
-    this.entities = []
+    this.#entityById = {}
+    this.#shipById = {}
+    this.#bulletById = {}
     this.gameTime = 0
     this.tickNumber = 0
     this.averageDt = 0
     this.isServer = isServer
   }
 
+
+  getEntities() {
+    return Object.values(this.#entityById)
+  }
+
+  getEnetityById(id) {
+    return this.#entityById[id]
+  }
+
+  getShips() {
+    return Object.values(this.#shipById)
+  }
+
+  getShipById(id) {
+    return this.#shipById[id]
+  }
+
+  getBullets() {
+    return Object.values(this.#bulletById)
+  }
+
+  getBulletById(id) {
+    return this.#bulletById[id]
+  }
+
   addEntity(entity) {
     entity.setWorld(this)
-    this.entities.push(entity)
+    this.#entityById[entity.id] = entity
+    if (entity instanceof Ship) {
+      this.#shipById[entity.id] = entity
+    } else if (entity instanceof Bullet) {
+      this.#bulletById[entity.id] = entity
+    }
   }
 
   removeEntity(entity) {
-    this.entities = this.entities.filter(e => e !== entity)
+    this.removeEntityById(entity.id)
+  }
+
+  removeEntityById(id) {
+    const entity = this.#entityById[id]
+    if (entity) {
+      delete this.#entityById[id]
+      if (entity instanceof Bullet) {
+        delete this.#bulletById[entity.id]
+      } else if (entity instanceof Ship) {
+        delete this.#shipById[entity.id]
+      }
+    }
   }
 
   trySpawnBullet(pos, direction, owner) {
     const bulletId = `${owner.id}-${owner.shotBulletCount}`
     // find if that bullet already exists
-    const entity = this.entities.find(entity => entity instanceof Bullet && entity.id === bulletId)
+    const entity = this.getBulletById(bulletId)
     if (entity) {
       return false
     }
-    const bullet = new Bullet(bulletId, pos, direction, owner)
+    const bullet = new Bullet(bulletId, pos, direction, owner.id)
     this.addEntity(bullet)
     owner.shotBulletCount++
     return true
   }
 
   render(dt) {
-    this.entities.forEach(entity => {
+    this.getEntities().forEach(entity => {
       entity.render(dt)
     })
   }
 
   update(dt) {
-    this.entities.forEach(entity => {
+    this.getEntities().forEach(entity => {
       entity.update(dt)
     })
 
-    //
-    // collision detection
-    //
-    // bullets
-    for (let i = 0; i < this.entities.length; i++) {
-      const entity = this.entities[i]
-      if (entity instanceof Bullet) {
-        const traceSegment = new Segment(entity.prevPos, entity.pos)
-        for (let j = 0; j < this.entities.length; j++) {
-          const other = this.entities[j]
-          if (entity != other && other.getBBox().intersectsSegment(traceSegment)) {
-            entity.onCollision(other)
+    // Server-only logic
+    if (this.isServer) {
+      //
+      // collision detection
+      //
+      // bullets
+      for (const bullet of this.getBullets()) {
+        const traceSegment = new Segment(bullet.prevPos, bullet.pos)
+        for (const other of this.getEntities()) {
+          if (bullet != other && other.getBBox().intersectsSegment(traceSegment)) {
+            bullet.onCollision(other)
           }
         }
       }
-    }
-    // ships
-    for (let i = 0; i < this.entities.length; i++) {
-      const entity = this.entities[i]
-      if (entity instanceof Ship) {
-        for (let j = 0; j < this.entities.length; j++) {
-          const other = this.entities[j]
-          if (entity != other && other.getBBox().intersects(entity.getBBox())) {
-            entity.onCollision(other)
+      // ships
+      for (const ship of this.getShips()) {
+        for (const other of this.getEntities()) {
+          if (ship != other && other.getBBox().intersects(ship.getBBox())) {
+            ship.onCollision(other)
           }
         }
       }
-    }
 
-    // remove dead
-    this.entities = this.entities.filter(entity => entity.alive)
+      // remove dead
+      for (const entity of this.getEntities()) {
+        if (!entity.alive) {
+          this.removeEntityById(entity.id)
+        }
+      }
+    }
 
     // advance game time
     this.gameTime += dt

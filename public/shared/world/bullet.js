@@ -1,16 +1,31 @@
 import { Entity } from './entity.js'
 import { Vector2 } from '../math/vector2.js'
-import { BULLET_SPEED, BULLET_LIFETIME } from './constants.js'
+import { BULLET_LIFETIME } from './constants.js'
 
 
 export class Bullet extends Entity {
-  constructor(id, pos, direction, owner) {
+  constructor(id, pos, speed, ownerId) {
     super(id, pos)
     this.prevPos = pos
     this.size = new Vector2(3, 3)
-    this.speed = direction.normalized().mul(BULLET_SPEED)
+    this.speed = speed
     this.lifetime = 0
-    this.owner = owner
+    this.ownerId = ownerId
+  }
+
+  getNetworkData() {
+    return {
+      ...super.getNetworkData(),
+      speed: this.speed,
+      lifetime: this.lifetime,
+      ownerId: this.ownerId,
+    }
+  }
+
+  syncToNetworkData(data) {
+    super.syncToNetworkData(data)
+    this.lifetime = data.lifetime
+    this.speed = Vector2.fromObject(data.speed)
   }
 
   update(deltaTime) {

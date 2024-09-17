@@ -3,6 +3,7 @@ import { Camera } from './camera.js'
 import { World } from './../shared/world/world.js'
 import { Ship } from './../shared/world/ship.js'
 import { Input } from './../shared/world/input.js'
+import { Bullet } from './../shared/world/bullet.js'
 import { MAX_THRUST_INPUT_AT_DISTANCE, GAME_DT_MS } from './../shared/world/constants.js'
 import { Renderer } from './renderer.js'
 
@@ -138,7 +139,7 @@ class Client {
     this.world.gameTime = serverTime
 
     for (const shipData of ships) {
-      const ship = this.world.entities.find(e => e.id === shipData.id)
+      const ship = this.world.getShipById(shipData.id)
       if (ship) {
         ship.syncToNetworkData(serverTime, shipData)
       } else {
@@ -151,8 +152,29 @@ class Client {
       }
     }
 
+    for (const bulletData of state.bullets) {
+      const bullet = this.world.getBulletById(bulletData.id)
+      if (bullet) {
+        bullet.syncToNetworkData(bulletData)
+      } else {
+        const bullet = new Bullet(bulletData.id, Vector2.fromObject(bulletData.pos), Vector2.fromObject(bulletData.speed), bulletData.ownerId)
+        this.world.addEntity(bullet)
+      }
+    }
+
+    // remove dead bullets
+    for (const bullet of this.world.getBullets()) {
+      if (!state.bullets.find(b => b.id === bullet.id)) {
+        this.world.removeEntity(bullet)
+      }
+    }
+
     // remove disconnected players
-    this.world.entities = this.world.entities.filter(e => !(e instanceof Ship && !ships.find(p => p.id === e.id)))
+    for (const ship of this.world.getShips()) {
+      if (!ships.find(p => p.id === ship.id)) {
+        this.world.removeEntity(ship)
+      }
+    }
 
   }
 }

@@ -58,7 +58,7 @@ class GameServer {
       });
 
       socket.on('sendPlayerInput', (input) => {
-        const ship = this.world.entities.find(e => e.id === input.id)
+        const ship = this.world.getShipById(input.id)
         if (ship) {
           var newInput = new Input()
           newInput.syncToNetworkData(input)
@@ -103,7 +103,8 @@ class GameServer {
     // Send server state to all clients
     var state = {
       "gameTime": this.world.gameTime,
-      "ships": this.world.entities.filter(e => e instanceof Ship).map(e => e.getNetworkData())
+      "ships": this.world.getShips().map(e => e.getNetworkData()),
+      "bullets": this.world.getBullets().map(e => e.getNetworkData())
     }
     io.emit('sendServerState', state)
   }
