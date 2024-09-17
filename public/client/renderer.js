@@ -1,4 +1,5 @@
-import { Ship, Bullet } from '../shared/world/world.js'
+import { Ship } from '../shared/world/ship.js'
+import { Bullet } from '../shared/world/bullet.js'
 import { Vector2 } from '../shared/math/vector2.js'
 
 

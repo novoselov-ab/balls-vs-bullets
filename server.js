@@ -1,4 +1,7 @@
-import { World, Ship, NpcPlayer, Input } from './public/shared/world/world.js'
+import { World } from './public/shared/world/world.js'
+import { Ship } from './public/shared/world/ship.js'
+import { NpcPlayer } from './public/shared/world/npc_player.js'
+import { Input } from './public/shared/world/input.js'
 import { Vector2 } from './public/shared/math/vector2.js'
 import { GAME_DT_MS } from './public/shared/world/constants.js'
 

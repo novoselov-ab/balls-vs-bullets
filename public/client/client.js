@@ -1,6 +1,8 @@
 import { Vector2 } from './../shared/math/vector2.js'
 import { Camera } from './camera.js'
-import { World, Ship, Input } from './../shared/world/world.js'
+import { World } from './../shared/world/world.js'
+import { Ship } from './../shared/world/ship.js'
+import { Input } from './../shared/world/input.js'
 import { MAX_THRUST_INPUT_AT_DISTANCE, GAME_DT_MS } from './../shared/world/constants.js'
 import { Renderer } from './renderer.js'
 
