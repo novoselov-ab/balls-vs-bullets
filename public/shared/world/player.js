@@ -1,5 +1,6 @@
 import { Vector2 } from '../math/vector2.js'
 import { Input } from './input.js'
+import { RESPAWN_COOLDOWN } from './constants.js'
 
 export class Player {
   constructor(id) {
@@ -8,14 +9,46 @@ export class Player {
     this.ship = null
     this.kills = 0
     this.deaths = 0
+    this.isCurrentPlayer = false
+    this.respawnCooldown = 0
+  }
+
+  getNetworkData() {
+    return {
+      id: this.id,
+      name: this.name,
+      kills: this.kills,
+      deaths: this.deaths,
+      respawnCooldown: this.respawnCooldown,
+    }
+  }
+
+  syncToNetworkData(data) {
+    this.name = data.name
+    this.kills = data.kills
+    this.deaths = data.deaths
+    this.respawnCooldown = data.respawnCooldown
   }
 
   setShip(ship) {
     this.ship = ship
   }
 
+  die() {
+    this.deaths++
+    this.ship = null
+    this.respawnCooldown = RESPAWN_COOLDOWN
+  }
+
   update(dt) {
     // To be implemented by subclasses
+    if (this.respawnCooldown > 0) {
+      this.respawnCooldown -= dt
+    }
+  }
+
+  shouldRespawn() {
+    return this.ship === null && this.respawnCooldown <= 0
   }
 }
 
@@ -27,6 +60,12 @@ export class NpcPlayer extends Player {
   }
 
   update(dt) {
+    super.update(dt)
+
+    if (!this.ship) {
+      return
+    }
+
     if (this.waypointCooldown > 0) {
       this.waypointCooldown -= dt
     } else {

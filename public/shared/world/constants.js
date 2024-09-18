@@ -9,6 +9,8 @@ export const SHIP_HP_LOSS_COOLDOWN = 0.2
 export const BULLET_SPEED = 800.0
 export const BULLET_LIFETIME = 5.0
 export const SHIP_START_HP = 3
+export const RESPAWN_COOLDOWN = 3.0
+export const COLLISION_DAMAGE = 0
 
 export const MAX_THRUST_INPUT_AT_DISTANCE = 100
 export const MAX_ROTATION_INPUT_AT_ANGLE = 0.3

@@ -62,6 +62,9 @@ class Client {
     // listen for server state
     this.socket.on('sendServerState', this.onServerState.bind(this))
 
+    // listen for player stats
+    this.socket.on('sendPlayerStats', this.onPlayerStats.bind(this))
+
     // notify server of new player
     this.socket.emit('new player')
 
@@ -177,6 +180,29 @@ class Client {
       }
     }
 
+  }
+
+  onPlayerStats(state) {
+    const players = state.players
+    // update players
+    for (const playerData of players) {
+      var player = this.world.getPlayerById(playerData.id)
+      if (player) {
+        player.syncToNetworkData(playerData)
+      } else {
+        player = this.world.addPlayer(playerData.id, playerData.name)
+        if (playerData.id === this.socket.id) {
+          player.isCurrentPlayer = true
+        }
+      }
+    }
+
+    // remove disconnected players
+    for (const player of this.world.getPlayers()) {
+      if (!players.find(p => p.id === player.id)) {
+        this.world.removePlayer(player)
+      }
+    }
   }
 }
 

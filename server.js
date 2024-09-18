@@ -83,7 +83,7 @@ class GameServer {
 
   addNpc() {
     const npcPlayer = this.world.addPlayer(null, "NPC: Bob", true)
-    const shipId = npcPlayer.id + "-ship"
+    const shipId = npcPlayer.id
     const npc1 = new Ship(shipId, new Vector2(100, 100))
     npcPlayer.setShip(npc1)
     this.world.addEntity(npc1)
@@ -107,13 +107,17 @@ class GameServer {
       "bullets": this.world.getBullets().map(e => e.getNetworkData())
     }
     io.emit('sendServerState', state)
+
+    // Send player stats every 10 ticks
+    if (this.world.tickNumber % 10 === 0) {
+      const players = this.world.getPlayers().map(player => player.getNetworkData())
+      state = {
+        "players": players
+      }
+      io.emit('sendPlayerStats', state)
+    }
   }
 }
 
-
 const gameServer = new GameServer() // Initialize the game server
-
-
-
-
 

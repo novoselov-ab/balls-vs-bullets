@@ -54,6 +54,10 @@ export class World {
     return Object.values(this.#playerById)
   }
 
+  getPlayerById(id) {
+    return this.#playerById[id]
+  }
+
   getEntities() {
     return Object.values(this.#entityById)
   }
@@ -160,7 +164,27 @@ export class World {
       // remove dead
       for (const entity of this.getEntities()) {
         if (!entity.alive) {
+          if (entity instanceof Ship) {
+            for (const player of this.getPlayers()) {
+              if (player.ship === entity) {
+                if (entity.lastDamagedBy) {
+                  const lastDamagedBy = this.getPlayerById(entity.lastDamagedBy)
+                  lastDamagedBy.kills++
+                }
+                player.die()
+              }
+            }
+          }
           this.removeEntityById(entity.id)
+        }
+      }
+
+      // auto-respawn logic
+      for (const player of this.getPlayers()) {
+        if (player.shouldRespawn()) {
+          const ship = new Ship(player.id, new Vector2(100, 100))
+          player.setShip(ship)
+          this.addEntity(ship)
         }
       }
     }

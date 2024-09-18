@@ -1,7 +1,7 @@
 import { Entity } from './entity.js'
 import { Bullet } from './bullet.js'
 import { Vector2 } from '../math/vector2.js'
-import { SHIP_ROTATE_SPEED, SHIP_THRUST, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, WORLD_SPEED_DRAG, WORLD_DRAG, BULLET_SPEED, SHIP_START_HP } from './constants.js'
+import { SHIP_ROTATE_SPEED, SHIP_THRUST, SHIP_SHOOTING_COOLDOWN, SHIP_HP_LOSS_COOLDOWN, WORLD_SPEED_DRAG, WORLD_DRAG, BULLET_SPEED, SHIP_START_HP, COLLISION_DAMAGE } from './constants.js'
 import { clamp01 } from '../math/common.js'
 
 
@@ -19,6 +19,8 @@ export class Ship extends Entity {
     this.newInputQueue = []
     this.inputBuffer = []
     this.lastInputTickNumber = 0
+
+    this.lastDamagedBy = null
 
     // true for a current player on a client
     this.isPlayer = false
@@ -58,13 +60,17 @@ export class Ship extends Entity {
   onCollision(other) {
     if (other instanceof Bullet) {
       if (other.ownerId != this.id) {
+        this.lastDamagedBy = other.ownerId
         this.damage()
         other.die()
       }
     }
     else if (other instanceof Ship) {
       this.speed = other.speed.mul(0.5).add(this.speed.mul(0.5))
-      this.damage()
+      if (COLLISION_DAMAGE > 0) {
+        this.damage(COLLISION_DAMAGE)
+        this.lastDamagedBy = other.id
+      }
     }
   }
 

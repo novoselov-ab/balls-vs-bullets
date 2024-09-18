@@ -138,8 +138,6 @@ export class Renderer {
         if (entity.name) {
           c.fillText(entity.name, pos.x - 10, pos.y - 30)
         }
-
-
       }
       else if (entity instanceof Bullet) {
         // translate from world space to camera space
@@ -163,9 +161,18 @@ export class Renderer {
     this.c.fillStyle = "white";
     this.c.fillText("Render FPS: " + Math.round(1 / dt), 10, 30)
 
+    // player stats:
+    var row = 0
+    for (const player of this.world.getPlayers()) {
+      const nameOrId = player.isCurrentPlayer ? "You" : player.id
+      this.c.fillText(`Player ${nameOrId} | Kills: ${player.kills} | Deaths: ${player.deaths} | Respawn in: ${player.respawnCooldown}`, 10, 50 + 20 * row)
+      row++
+    }
+
     // debug info
     for (const [key, value] of Object.entries(this.debugInfo)) {
-      this.c.fillText(`${key}: ${value}`, 10, 50 + 20 * Object.keys(this.debugInfo).indexOf(key))
+      this.c.fillText(`${key}: ${value}`, 10, 50 + 20 * row)
+      row++
     }
   }
 
